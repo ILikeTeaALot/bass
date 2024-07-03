@@ -45,9 +45,21 @@ impl Bass {
 	/// Create a new "managed" BASS instance.
 	///
 	/// NOTE: BASS_CONFIG_UNICODE is always enabled.
+	#[deprecated = "Use [`Bass::init`] instead"]
 	pub fn new(
 		device: Option<i32>,
 		frequency: u32,
+		config: Option<&[(DWORD, DWORD)]>,
+		plugin_names: Option<&[&str]>, // plugin_names: Option<&[impl AsRef<OsStr>]>
+	) -> Result<Self, BassError> {
+		Self::init(device, frequency, 0, None, config, plugin_names)
+	}
+	
+	pub fn init(
+		device: Option<i32>,
+		frequency: u32,
+		flags: impl Into<DWORD>,
+		window: Option<*mut c_void>,
 		config: Option<&[(DWORD, DWORD)]>,
 		plugin_names: Option<&[&str]>, // plugin_names: Option<&[impl AsRef<OsStr>]>
 	) -> Result<Self, BassError> {
@@ -64,7 +76,7 @@ impl Bass {
 		}
 		// Force UTF-8 for BASS_*INFO structs on all platforms.
 		BASS_SetConfig(BASS_CONFIG_UNICODE, TRUE);
-		let initialised = unsafe { BASS_Init(device.unwrap_or(-1), frequency, 0, NULL, NULL) };
+		let initialised = unsafe { BASS_Init(device.unwrap_or(-1), frequency, flags, window.unwrap_or(NULL), NULL) };
 		if initialised {
 			let device = BASS_GetDevice();
 			let mut plugins: HashMap<OsString, HPLUGIN> = HashMap::new();
