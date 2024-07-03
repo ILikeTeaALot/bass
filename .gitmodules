@@ -1,0 +1,6 @@
+[submodule "crates/bass-sys"]
+	path = crates/bass-sys
+	url = git@github.com:ILikeTeaALot/bass-sys
+[submodule "crates/rust-bindgen"]
+	path = crates/rust-bindgen
+	url = git@github.com:ILikeTeaALot/rust-bindgen
