@@ -94,14 +94,14 @@ impl Sample {
 		path: impl AsRef<str>,
 		flags: impl Into<DWORD>,
 		offset: impl Into<QWORD>,
-		length: impl Into<DWORD>,
+		length: Option<DWORD>,
 		maximum: impl Into<DWORD>,
 		device: Option<impl Into<DWORD>>,
 	) -> BassResult<Self> {
 		let flags = flags.into();
 		let path = U16CString::from_str(path).unwrap();
 		let handle =
-			unsafe { BASS_SampleLoad(false, path.as_ptr() as *const c_void, offset, length, maximum, flags | BASS_UNICODE) };
+			unsafe { BASS_SampleLoad(false, path.as_ptr() as *const c_void, offset, length.unwrap_or(DWORD(0)), maximum, flags | BASS_UNICODE) };
 		if handle == 0 {
 			let error = BassError::default();
 			eprintln!("{}", error);
@@ -116,7 +116,7 @@ impl Sample {
 
 	/// Create a new stream from file/audio data in memory.
 	///
-	/// Memory is copied by BASS, so anything able to be passed as &[u8] is acceptable.
+	/// Memory is copied by BASS, so anything able to be passed by reference as &[u8] is acceptable.
 	pub fn new_memory(
 		memory: &[u8],
 		flags: impl Into<DWORD>,
