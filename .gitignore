@@ -1,0 +1,5 @@
+/target
+# BASS files
+*.dylib
+# This is a libary - ignore Cargo.lock
+Cargo.lock
