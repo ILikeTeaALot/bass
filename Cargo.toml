@@ -12,6 +12,7 @@ mixer = ["bass-sys/bassmix"]
 loud = ["bass-sys/bassloud"]
 # FX features
 fx = []
+default = ["cd", "fx", "loud", "mixer"]
 
 [dependencies]
 bass-sys = { path = "crates/bass-sys", default-features = false }

@@ -13,25 +13,25 @@ pub enum FlagUpdateError {
 	FlagsNotChanged(DWORD),
 }
 
-#[derive(Clone, Copy, Debug)]
-#[repr(transparent)]
-pub struct Channel<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>>(pub(crate) T);
+// #[derive(Clone, Copy, Debug)]
+// #[repr(transparent)]
+// pub struct Channel<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>>(pub(crate) T);
 
-// /// In theory this should auto-drop all Channel<H_> types...
-// /// 
-// /// I really need to open source this to get some more experienced eyeballs on it...
-// impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> Drop for Channel<T> {
-// 	fn drop(&mut self) {
-// 		BASS_ChannelFree(self.handle());
+// // /// In theory this should auto-drop all Channel<H_> types...
+// // /// 
+// // /// I really need to open source this to get some more experienced eyeballs on it...
+// // impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> Drop for Channel<T> {
+// // 	fn drop(&mut self) {
+// // 		BASS_ChannelFree(self.handle());
 // 	}
 // }
 
-impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> Channel<T> {
-	pub fn handle(&self) -> DWORD {
-		(&self.0).clone().into()
-	}
+pub type FreeResult<T> = Result<(), T>;
 
-	pub fn get_3d_position(&self) -> BassResult<Bass3DPosition> {
+pub trait Channel {
+	fn handle(&self) -> DWORD;
+
+	fn get_3d_position(&self) -> BassResult<Bass3DPosition> {
 		let mut position = Some(Default::default());
 		let mut orientation = Some(Default::default());
 		let mut velocity = Some(Default::default());
@@ -41,7 +41,7 @@ impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> Channel<T> {
 		}
 	}
 
-	pub fn set_3d_position(
+	fn set_3d_position(
 		&self,
 		position: &Option<BASS_3DVECTOR>,
 		orientation: &Option<BASS_3DVECTOR>,
@@ -50,7 +50,7 @@ impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> Channel<T> {
 		result(BASS_ChannelSet3DPosition(self.handle(), position, orientation, velocity))
 	}
 
-	pub fn get_3d_attributes(&self) -> BassResult<Bass3DAttributes> {
+	fn get_3d_attributes(&self) -> BassResult<Bass3DAttributes> {
 		let mut mode: Option<DWORD> = Some(DWORD(0));
 		let mut minimum: Option<f32> = Some(0.);
 		let mut maximum: Option<f32> = Some(0.);
@@ -78,11 +78,9 @@ impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> Channel<T> {
 		}
 	}
 
-	pub fn free(self: Self) -> BassResult<()> {
-		result(BASS_ChannelFree(self.handle()))
-	}
+	fn free(self: Self) -> FreeResult<Self> where Self: Sized;
 
-	pub fn get_attribute(&self, attrib: ChannelGetAttribute) -> BassResult<f32> {
+	fn get_attribute(&self, attrib: ChannelGetAttribute) -> BassResult<f32> {
 		let mut value = 0.;
 		match BASS_ChannelGetAttribute(self.handle(), attrib as u32, &mut value) {
 			true => Ok(value),
@@ -90,7 +88,7 @@ impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> Channel<T> {
 		}
 	}
 
-	pub fn set_attribute(&self, attrib: ChannelSetAttribute, value: f32) -> BassResult<()> {
+	fn set_attribute(&self, attrib: ChannelSetAttribute, value: f32) -> BassResult<()> {
 		// match match attrib {
 		// 	ChannelSetAttribute::Buffer(value)
 		// 	| ChannelSetAttribute::Frequency(value)
@@ -123,7 +121,7 @@ impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> Channel<T> {
 		}
 	}
 
-	pub fn get_info(&self) -> BassResult<BassChannelInfo> {
+	fn get_info(&self) -> BassResult<BassChannelInfo> {
 		let mut info = Default::default();
 		match BASS_ChannelGetInfo(self.handle(), &mut info) {
 			true => Ok(info.into()),
@@ -133,7 +131,7 @@ impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> Channel<T> {
 
 	/// Only time this should fail is if the handle is invalid which,
 	/// if `BASS_AUTOFREE` was set on the Channel, it could be.
-	pub fn get_flags(&self) -> BassResult<DWORD> {
+	fn get_flags(&self) -> BassResult<DWORD> {
 		let flags = BASS_ChannelFlags(self.handle(), 0, 0);
 		match flags == -1 {
 			true => Err(BassError::default()),
@@ -143,7 +141,7 @@ impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> Channel<T> {
 
 	/// Most of the time you can just ignore the error on this with `.ok()`, but sometimes you may
 	/// want to check if the flags have been correctly updated.
-	pub fn set_flags(&self, flags: impl Into<DWORD>, value: bool) -> Result<(), FlagUpdateError> {
+	fn set_flags(&self, flags: impl Into<DWORD>, value: bool) -> Result<(), FlagUpdateError> {
 		let flags = flags.into();
 		let current = BASS_ChannelFlags(self.handle(), 0, 0);
 		if current == -1 {
@@ -180,22 +178,5 @@ impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> Channel<T> {
 				}
 			}
 		}
-	}
-}
-
-// impl Channel for HSTREAM {}
-// impl Channel for HMUSIC {}
-
-impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> Deref for Channel<T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
-impl<T: Clone + Copy + Debug + Deref<Target = DWORD> + Into<DWORD>> From<Channel<T>> for DWORD {
-	fn from(value: Channel<T>) -> Self {
-		value.0.into()
 	}
 }

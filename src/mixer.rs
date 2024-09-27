@@ -8,11 +8,7 @@ use std::ops::Deref;
 use std::ptr::null_mut;
 
 use crate::{
-	enums::{BassErrorCode, ChannelState},
-	error::BassError,
-	null::NULL,
-	result::{result, BassResult},
-	syncproc::*,
+	channel::FreeResult, enums::{BassErrorCode, ChannelState}, error::BassError, null::NULL, result::{result, BassResult}, syncproc::*
 };
 
 // use bass_mixer_sys::*;
@@ -66,7 +62,7 @@ pub struct Mixer {
 		// dyn Fn(HSYNC, DWORD, DWORD, &CallbackUserData),
 		CallbackUserData
 	>>>>,
-	handle: Channel<HSTREAM>,
+	handle: HSTREAM,
 	// queue_sync: HSYNC,
 	// device_format_sync: HSYNC,
 	volume: Mutex<f32>,
@@ -96,12 +92,12 @@ impl Mixer {
 		let freq = freq.into();
 		let channels = channels.into();
 		let default_volume = default_volume.unwrap_or(1.0);
-		let handle = Channel(BASS_Mixer_StreamCreate(
+		let handle = BASS_Mixer_StreamCreate(
 			freq,
 			channels,
 			flags,
-		));
-		BASS_ChannelSetAttribute(handle.handle(), BASS_ATTRIB_BUFFER, 0.);
+		);
+		BASS_ChannelSetAttribute(handle, BASS_ATTRIB_BUFFER, 0.);
 		Arc::new_cyclic(|mixer| {
 			Mixer {
 				handle,
@@ -128,7 +124,7 @@ impl Mixer {
 	/// From another point of view however, it is worth mentioning that it is
 	/// hard-coded to only use the types it's supplied with and to use them properly
 	/// after a brief trip into C-land.
-	pub fn set_sync<T: Send + Sync, F: Fn(HSYNC, DWORD, DWORD, &T) + Send + Sync>(
+	pub fn set_sync<T: Send + Sync + Sized, F: Fn(HSYNC, DWORD, DWORD, &T) + Send + Sync>(
 		&self,
 		function: F,
 		sync_type: impl Into<DWORD>,
@@ -253,11 +249,11 @@ impl Mixer {
 	}
 
 	pub fn add(&self, channel: impl Into<DWORD>, flags: impl Into<DWORD>) -> BassResult<()> {
-		result(BASS_Mixer_StreamAddChannelEx(*self.handle, channel, flags, 0, 0))
+		result(BASS_Mixer_StreamAddChannelEx(self.handle, channel, flags, 0, 0))
 	}
 
 	pub fn add_ex(&self, channel: impl Into<DWORD>, flags: impl Into<DWORD>, start: impl Into<QWORD>, length: impl Into<QWORD>) -> BassResult<()> {
-		result(BASS_Mixer_StreamAddChannelEx(*self.handle, channel, flags, start, length))
+		result(BASS_Mixer_StreamAddChannelEx(self.handle, channel, flags, start, length))
 	}
 
 	pub fn dump(&self) -> BassResult<()> {
@@ -288,11 +284,11 @@ impl Mixer {
 		if mixer == 0 {
 			BassError::consume()
 		}
-		return mixer == *self.handle;
+		return mixer == self.handle;
 	}
 
 	pub fn channels_count(&self) -> DWORD {
-		unsafe { BASS_Mixer_StreamGetChannels(*self.handle, null_mut::<DWORD>(), 0) }
+		unsafe { BASS_Mixer_StreamGetChannels(self.handle, null_mut::<DWORD>(), 0) }
 	}
 
 	/// If the returned `Vec` has `.len()` `0`, then there are no channels.
@@ -304,7 +300,7 @@ impl Mixer {
 		// }
 		let count = self.channels_count();
 		let mut channels: Vec<DWORD> = Vec::with_capacity(*count as usize);
-		let inserted = unsafe { BASS_Mixer_StreamGetChannels(*self.handle, channels.as_mut_ptr(), count) };
+		let inserted = unsafe { BASS_Mixer_StreamGetChannels(self.handle, channels.as_mut_ptr(), count) };
 		if *inserted as i32 == -1 {
 			return BassError::result();
 		}
@@ -316,7 +312,7 @@ impl Mixer {
 
 	pub fn current(&self) -> BassResult<Option<DWORD>> {
 		let mut channels: Vec<DWORD> = Vec::with_capacity(1);
-		let inserted = unsafe { BASS_Mixer_StreamGetChannels(*self.handle, channels.as_mut_ptr(), 1) };
+		let inserted = unsafe { BASS_Mixer_StreamGetChannels(self.handle, channels.as_mut_ptr(), 1) };
 		if *inserted as i32 == -1 {
 			return BassError::result(); // An error occurred; pass the error up the call chain.
 		} else if *inserted == 0 {
@@ -426,9 +422,25 @@ impl Drop for Mixer {
 }
 
 impl Deref for Mixer {
-	type Target = Channel<HSTREAM>;
+	type Target = HSTREAM;
 
 	fn deref(&self) -> &Self::Target {
 		&self.handle
+	}
+}
+
+impl Channel for Mixer {
+	fn handle(&self) -> DWORD {
+		self.0
+	}
+
+	fn free(self: Self) -> FreeResult<Self> {
+		let ok = BASS_ChannelFree(self.handle());
+		if ok {
+			drop(self);
+			Ok(())
+		} else {
+			Err(self)
+		}
 	}
 }

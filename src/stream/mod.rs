@@ -62,7 +62,7 @@ impl Debug for StreamData {
 #[derive(Debug)]
 pub struct Stream {
 	device: DWORD,
-	handle: Channel<HSTREAM>,
+	handle: HSTREAM,
 	init_flags: DWORD,
 	stream_type: StreamType,
 	/// This has to be kept around for memory safety reasons.
@@ -103,7 +103,7 @@ impl Stream {
 				device
 			}
 		};
-		Ok(Self { data, device, init_flags: flags, handle: Channel(handle), stream_type })
+		Ok(Self { data, device, init_flags: flags, handle, stream_type })
 	}
 
 	fn new_file_internal(path: impl AsRef<str>, flags: impl Into<DWORD>, offset: impl Into<QWORD>, length: impl Into<QWORD>, device: Option<impl Into<DWORD>>) -> BassResult<Self> {
@@ -193,38 +193,39 @@ impl Stream {
 		Self::new_internal(StreamType::FileMem, handle, flags, device, None)
 	}
 
-	pub fn new_user<T: Send + Sync>(
-		system: StreamSystem,
-		flags: impl Into<DWORD>,
-		device: Option<impl Into<DWORD>>,
-		// user: T,
-		// procs: BassFileProcs<T>,
-		// proc_handler: Box<dyn FileProc<UserData = T>>,
-		user: FileProcHandlers<T>,
-	) -> BassResult<Self> {
-		let flags = flags.into();
-		let procs = BassFileProcs::from(&user);
-		// This cruft is necessary in order to run the correct `mem::drop` for the data stored in the `Box`.
-		// There is some seriously hideous, but afaik sound, code here...
-		let user = Box::into_raw(Box::new(user));
-		let user = unsafe {
-			Box::from_raw(user as *mut FileProcHandlers<CallbackUserData>)
-		};
-		let user = Box::into_raw(user);
-		let dropper = Box::into_raw(Box::new(|to_drop: Box<FileProcHandlers<T>>| {
-			drop(to_drop)
-		}) as Box<dyn Fn(Box<FileProcHandlers<T>>) + Send + Sync + 'static>);
-		let dropper = unsafe {
-			Box::from_raw(dropper as *mut (dyn Fn(Box<FileProcHandlers<CallbackUserData>>) + Send + Sync + 'static))
-		};
-		// let user = Box::into_raw(Box::new(Arc::new(user)));
-		let handle = BASS_StreamCreateFileUser(DWORD(system as u32), flags, &procs, user);
-		// let handle = HSTREAM(DWORD(0)); // TODO
-		Self::new_internal(StreamType::FileUser, handle, flags, device, Some(StreamData::FileUser{user, dropper}))
-	}
+	/// This was bad anyway
+	// pub fn new_user<T: Send + Sync>(
+	// 	system: StreamSystem,
+	// 	flags: impl Into<DWORD>,
+	// 	device: Option<impl Into<DWORD>>,
+	// 	// user: T,
+	// 	// procs: BassFileProcs<T>,
+	// 	// proc_handler: Box<dyn FileProc<UserData = T>>,
+	// 	user: FileProcHandlers<T>,
+	// ) -> BassResult<Self> {
+	// 	let flags = flags.into();
+	// 	let procs = BassFileProcs::from(&user);
+	// 	// This cruft is necessary in order to run the correct `mem::drop` for the data stored in the `Box`.
+	// 	// There is some seriously hideous, but afaik sound, code here...
+	// 	let user = Box::into_raw(Box::new(user));
+	// 	let user = unsafe {
+	// 		Box::from_raw(user as *mut FileProcHandlers<CallbackUserData>)
+	// 	};
+	// 	let user = Box::into_raw(user);
+	// 	let dropper = Box::into_raw(Box::new(|to_drop: Box<FileProcHandlers<T>>| {
+	// 		drop(to_drop)
+	// 	}) as Box<dyn Fn(Box<FileProcHandlers<T>>) + Send + Sync + 'static>);
+	// 	let dropper = unsafe {
+	// 		Box::from_raw(dropper as *mut (dyn Fn(Box<FileProcHandlers<CallbackUserData>>) + Send + Sync + 'static))
+	// 	};
+	// 	// let user = Box::into_raw(Box::new(Arc::new(user)));
+	// 	let handle = BASS_StreamCreateFileUser(DWORD(system as u32), flags, &procs, user);
+	// 	// let handle = HSTREAM(DWORD(0)); // TODO
+	// 	Self::new_internal(StreamType::FileUser, handle, flags, device, Some(StreamData::FileUser{user, dropper}))
+	// }
 
 	pub fn handle(&self) -> HSTREAM {
-		*self.handle
+		self.handle
 	}
 
 	// pub fn flags(&self) -> DWORD {
@@ -296,6 +297,7 @@ impl Stream {
 		result(ok)
 	}
 
+	#[cfg(feature = "mixer")]
 	pub fn set_mixer_position(&self, seconds: c_double) -> BassResult<()> {
 		let bytes = BASS_ChannelSeconds2Bytes(*self.handle, seconds);
 		if *bytes as i64 == -1 {
@@ -304,6 +306,7 @@ impl Stream {
 		self.set_mixer_position_bytes(bytes)
 	}
 
+	#[cfg(feature = "mixer")]
 	pub fn set_mixer_position_bytes(&self, bytes: impl Into<QWORD>) -> BassResult<()> {
 		let ok = BASS_Mixer_ChannelSetPosition(*self.handle, bytes, BASS_POS_BYTE | BASS_POS_SCAN);
 		result(ok)
@@ -330,7 +333,7 @@ impl Drop for Stream {
 }
 
 impl Deref for Stream {
-	type Target = Channel<HSTREAM>;
+	type Target = HSTREAM;
 
 	fn deref(&self) -> &Self::Target {
 		&self.handle

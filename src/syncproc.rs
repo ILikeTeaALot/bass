@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use bass_sys::{DWORD, HSYNC};
 
-pub(crate) fn use_weak_pointer<T, F: Fn(&T) -> ()>(ptr: *const T, function: F) {
+pub(crate) fn use_weak_pointer<T: Send + Sync + Sized, F: Fn(&T) -> ()>(ptr: *const T, function: F) {
 	let ptrcpy = ptr;
 	let weak = unsafe {
 		// **DO NOT** use Box::from_raw on this... it will cause issues... (see docs)
@@ -32,7 +32,7 @@ pub(crate) fn use_weak_pointer<T, F: Fn(&T) -> ()>(ptr: *const T, function: F) {
 	debug_assert_eq!(ptr, ptrcpy);
 }
 
-pub(crate) fn use_arc_pointer<T, F: Fn(&T) -> ()>(ptr: *mut T, function: F) {
+pub(crate) fn use_arc_pointer<T: Send + Sync + Sized, F: Fn(&T) -> ()>(ptr: *mut T, function: F) {
 	let ptrcpy = ptr;
 	let arc = unsafe {
 		// **DO NOT** use Box::from_raw on this... it will cause issues... (see docs)
@@ -50,7 +50,7 @@ pub(crate) fn use_arc_pointer<T, F: Fn(&T) -> ()>(ptr: *mut T, function: F) {
 	debug_assert_eq!(ptr, ptrcpy);
 }
 
-pub(crate) fn consume_arc_pointer<T, F: Fn(&T) -> ()>(ptr: *mut T, function: F) {
+pub(crate) fn consume_arc_pointer<T: Send + Sync + Sized, F: Fn(&T) -> ()>(ptr: *mut T, function: F) {
 	let arc = unsafe {
 		if ptr.is_null() {
 			return;
@@ -67,7 +67,7 @@ pub(crate) fn consume_arc_pointer<T, F: Fn(&T) -> ()>(ptr: *mut T, function: F) 
 ///
 /// <strike>This will also have to be reimplemented again, and again, and again,
 /// for every Managed Bass component that can register procs...</strike>
-pub(crate) unsafe extern "C" fn sync_proc<T: Send + Sync, F: Fn(HSYNC, DWORD, DWORD, &T) -> ()>(
+pub(crate) unsafe extern "C" fn sync_proc<T: Send + Sync + Sized, F: Fn(HSYNC, DWORD, DWORD, &T) -> ()>(
 	handle: HSYNC,
 	channel: DWORD,
 	data: DWORD,
@@ -93,7 +93,7 @@ pub(crate) unsafe extern "C" fn sync_proc<T: Send + Sync, F: Fn(HSYNC, DWORD, DW
 /// sync proc, but it's still pretty evil.
 ///
 /// This function consumes all the ARCs rather than maintaining them.
-pub(crate) extern "C" fn sync_onetime_proc<T: Send + Sync, F: Fn(HSYNC, DWORD, DWORD, &T) -> ()>(
+pub(crate) extern "C" fn sync_onetime_proc<T: Send + Sync + Sized, F: Fn(HSYNC, DWORD, DWORD, &T) -> ()>(
 	handle: HSYNC,
 	channel: DWORD,
 	data: DWORD,
@@ -113,7 +113,7 @@ pub(crate) extern "C" fn sync_onetime_proc<T: Send + Sync, F: Fn(HSYNC, DWORD, D
 
 // extern "C" fn dev_format_sync(handle: HSYNC, channel: DWORD, data: DWORD, user: Null) {}
 
-pub(crate) struct SyncData<T: Send + Sync> {
+pub(crate) struct SyncData<T: Send + Sync + Sized> {
 	pub function: Arc<dyn Fn(HSYNC, DWORD, DWORD, &T) + Send + Sync>,
 	pub user_data: Arc<T>,
 }
@@ -159,9 +159,13 @@ unsafe impl Sync for CallbackUserData {}
 /// ## Return
 ///
 /// The returned SyncData from this function can be passed as the `user: *mut c_void` parameter in BASS functions.
-pub(crate) fn make_sync_data<T: Send + Sync, F: Fn(HSYNC, DWORD, DWORD, &T) + Send + Sync>(function: F, user_data: T) -> Arc<SyncData<CallbackUserData>> {
+/// 
+/// This is going away soon, but for now I've made it compile with Rust 1.81
+pub(crate) fn make_sync_data<T: Send + Sync + Sized, F: Fn(HSYNC, DWORD, DWORD, &T) + Send + Sync>(function: F, user_data: T) -> Arc<SyncData<CallbackUserData>> {
 	let function = Arc::new(function);
 	let function: *const (dyn Fn(HSYNC, DWORD, DWORD, &T) + Send + Sync) = Arc::into_raw(function);
+	let function = function as *const (dyn Fn(HSYNC, DWORD, DWORD, &T) + Send + Sync);
+	let function = function as *const fn(HSYNC, DWORD, DWORD, &CallbackUserData);
 	let function = function as *const (dyn Fn(HSYNC, DWORD, DWORD, &CallbackUserData) + Send + Sync);
 	let function = unsafe { Arc::from_raw(function) };
 	// let function = Arc::new(Arc::into_raw(function) as *const SyncPtr);

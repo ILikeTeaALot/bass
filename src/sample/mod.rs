@@ -46,7 +46,7 @@ pub enum SampleType {
 /// BASS creates a copy of the data itself, so this is not strictly necessary.
 pub struct Sample {
 	device: DWORD,
-	handle: Channel<HSAMPLE>,
+	handle: HSAMPLE,
 	init_flags: DWORD,
 	stream_type: SampleType,
 	// /// This has to be kept around for memory safety reasons.
@@ -87,7 +87,7 @@ impl Sample {
 				device
 			}
 		};
-		Ok(Self { /*data,*/ device, init_flags: flags, handle: Channel(handle), stream_type })
+		Ok(Self { /*data,*/ device, init_flags: flags, handle: handle, stream_type })
 	}
 
 	pub fn new_file(
@@ -155,7 +155,7 @@ impl Sample {
 	}
 
 	pub fn get_channel(&self, flags: impl Into<DWORD>) -> Option<DWORD> {
-		BASS_SampleGetChannel(self.handle.0, flags)
+		BASS_SampleGetChannel(self.handle, flags)
 	}
 
 	// pub fn handle(&self) -> HSAMPLE {
@@ -270,7 +270,7 @@ impl Sample {
 // }
 
 impl Deref for Sample {
-	type Target = Channel<HSAMPLE>;
+	type Target = HSAMPLE;
 
 	fn deref(&self) -> &Self::Target {
 		&self.handle
