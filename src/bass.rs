@@ -10,7 +10,6 @@ use std::{
 	ffi::{c_char, c_int, c_void, CStr, OsString},
 };
 
-use bass_sys::BASS_MIXER_BUFFER;
 use bass_sys::BOOL::TRUE;
 use bass_sys::*;
 use widestring::U16CString;
@@ -105,7 +104,7 @@ impl Bass {
 	fn devices_internal(print: bool) -> Vec<BassDeviceInfo> {
 		let mut devices: Vec<BassDeviceInfo> = Vec::new();
 		for i in 0..*BASS_NODEVICE {
-			let mut info = bass_sys::BassDeviceInfo::new(NULL as *const c_char, NULL as *const c_char, 0);
+			let mut info = BASS_DEVICEINFO::new(NULL as *const c_char, NULL as *const c_char, 0);
 			// let infoptr = Box::into_raw(Box::new(info));
 			let ok = BASS_GetDeviceInfo(i, &mut info);
 			if !ok {
@@ -192,8 +191,8 @@ impl Bass {
 		}
 	}
 
-	pub fn info() -> BassResult<BassInfo> {
-		let mut info = BassInfo::default();
+	pub fn info() -> BassResult<BASS_INFO> {
+		let mut info = BASS_INFO::default();
 		// let infoptr = Box::into_raw(Box::new(info));
 		let ok = BASS_GetInfo(&mut info);
 		if !ok {
