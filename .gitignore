@@ -1,0 +1,7 @@
+/target
+
+# Libraries
+*.dylib
+
+# Test output
+test-output.txt
