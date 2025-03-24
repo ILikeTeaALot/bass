@@ -15,3 +15,7 @@ There should be no unsafe functionality exposed; so for some things calling a fu
 - Splitters
 - Streams
 - Syncs
+
+## Notes
+
+The environment variable DYLD_LIBRARY_PATH is set to include `.` to enable library searching to find BASS at the project root for testing.
