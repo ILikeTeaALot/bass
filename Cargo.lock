@@ -42,7 +42,7 @@ dependencies = [
 [[package]]
 name = "bass-sys"
 version = "2.4.17"
-source = "git+https://github.com/ILikeTeaALot/bass-sys.git#1bc2d36abfe44d27282b8439475f21ec83dcec8b"
+source = "git+https://github.com/ILikeTeaALot/bass-sys.git#23cf4198d06af0fde45bc92d43b82b949e81833c"
 dependencies = [
  "bindgen",
  "html5ever 0.30.0",
