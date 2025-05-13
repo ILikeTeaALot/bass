@@ -20,7 +20,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-enum MemoryDataOrDownloadProc<T: Send + Sync> {
+enum MemoryDataOrDownloadProc<T: Send + Sync + 'static> {
 	#[allow(dead_code)]
 	MemoryStream(Vec<u8>),
 	#[allow(dead_code)]
@@ -28,7 +28,7 @@ enum MemoryDataOrDownloadProc<T: Send + Sync> {
 }
 
 #[derive(Debug)]
-pub struct Stream<T: Send + Sync>(
+pub struct Stream<T: Send + Sync + 'static>(
 	HSTREAM,
 	/// It is required for a "memory stream" to hold onto the data it is streaming.
 	#[allow(dead_code)]
@@ -36,7 +36,7 @@ pub struct Stream<T: Send + Sync>(
 );
 
 #[repr(C)]
-pub struct DownloadProc<T: Send + Sync> {
+pub struct DownloadProc<T: Send + Sync + 'static> {
 	callback: Box<dyn FnMut(&[u8], &mut T) + Send + Sync + 'static>,
 	user: Box<T>,
 }
@@ -50,7 +50,7 @@ impl<T: Send + Sync> Debug for DownloadProc<T> {
 	}
 }
 
-extern "C" fn download_proc<T: Send + Sync>(buffer: *const c_void, length: DWORD, user: *mut c_void) {
+extern "C" fn download_proc<T: Send + Sync + 'static>(buffer: *const c_void, length: DWORD, user: *mut c_void) {
 	// let mut user_box = unsafe { Box::from_raw(user as *mut DownloadProc<T>) };
 	// let data = unsafe { slice::from_raw_parts(buffer as *const u8, (length.0 / 4) as usize) };
 	// (user_box.callback)(data, user_box.user.as_mut());
