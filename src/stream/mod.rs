@@ -96,7 +96,7 @@ extern "C" fn download_proc<T: Send + Sync>(buffer: *const c_void, length: DWORD
 	println!("Everything should drop now.");
 }
 
-impl Stream<()> {
+impl<T: Send + Sync> Stream<T> {
 	pub fn create() {}
 
 	pub fn create_file(

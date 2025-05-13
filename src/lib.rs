@@ -135,7 +135,7 @@ mod tests {
 			println!("BASS Device: {device}");
 			let devices = Bass::devices();
 			println!("BASS Device: {devices:#?}");
-			let stream = Stream::create_file("./orchestra-tune-up.mp3", 0, 0, BASS_SAMPLE_FLOAT)?;
+			let stream = Stream::<()>::create_file("./orchestra-tune-up.mp3", 0, 0, BASS_SAMPLE_FLOAT)?;
 			let _sync = stream.set_sync(
 				BASS_SYNC_SLIDE | BASS_SYNC_THREAD,
 				stream.seconds_to_bytes(3.)?,
