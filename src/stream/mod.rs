@@ -37,7 +37,7 @@ pub struct Stream<T: Send + Sync>(
 
 #[repr(C)]
 pub struct DownloadProc<T: Send + Sync> {
-	callback: Box<dyn FnMut(&[u8], &mut T) + Send + Sync>,
+	callback: Box<dyn FnMut(&[u8], &mut T) + Send + Sync + 'static>,
 	user: Box<T>,
 }
 

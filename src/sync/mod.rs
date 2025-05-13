@@ -58,7 +58,7 @@ impl<T: Send + Sync> Drop for BassSync<T> {
 	}
 }
 
-pub(crate) type SyncCallback<T> = dyn FnMut(&mut T, HSYNC, DWORD, DWORD) + Send + Sync;
+pub(crate) type SyncCallback<T> = dyn FnMut(&mut T, HSYNC, DWORD, DWORD) + Send + Sync + 'static;
 
 #[repr(C)]
 pub(crate) struct SyncUserData<T: Send + Sync>(pub(crate) Box<SyncCallback<T>>, pub(crate) Box<T>);

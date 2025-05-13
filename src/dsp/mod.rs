@@ -20,7 +20,7 @@ impl<T: Send + Sync> Drop for BassDsp<T> {
 	}
 }
 
-pub(crate) type DspCallback<T> = dyn FnMut(&mut T, &mut [f32], HDSP, DWORD);
+pub(crate) type DspCallback<T> = dyn FnMut(&mut T, &mut [f32], HDSP, DWORD) + Send + Sync + 'static;
 
 #[repr(C)]
 pub(crate) struct DspUserData<T: Send + Sync>(pub Box<DspCallback<T>>, pub Box<T>);
