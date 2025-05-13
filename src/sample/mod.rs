@@ -50,7 +50,7 @@ impl Sample {
 		}
 	}
 
-	pub fn get_stream(&self, flags: DWORD) -> BassResult<Stream> {
+	pub fn get_stream(&self, flags: DWORD) -> BassResult<Stream<()>> {
 		Stream::from_sample(self.0, flags)
 	}
 

@@ -18,16 +18,47 @@ use crate::{
 	BassResult,
 };
 
+/// In many respects this is an absolute nightmare...
 extern "C" fn sync_handler<T: Send + Sync>(handle: HSYNC, channel: DWORD, data: DWORD, user: *mut c_void) {
-	// #[cfg(test)]
-	// match fs::write("test-output.txt", "Hello from sync proc!") {
-	// 	Ok(_) => println!("OK"),
-	// 	Err(e) => println!("{e}"),
-	// }
-	let mut user_box = unsafe { Box::from_raw(user as *mut SyncUserData<T>) };
-	(user_box.0)(user_box.1.as_mut(), handle, channel, data);
-	Box::into_raw(user_box);
-	// println!("User Proc should have run!");
+	// let mut user_box = unsafe { Arc::from_raw(user as *mut SyncUserData<T>) };
+	let f = |mut user_box: MutexGuard<'_, SyncUserData<T>>| {
+		#[cfg(debug_assertions)]
+		println!("deref_mut'ing SyncUserData...");
+		let user_box = user_box.deref_mut();
+		#[cfg(debug_assertions)]
+		println!("Running user SyncProc...");
+		(user_box.0)(user_box.1.as_mut(), handle, channel, data);
+		#[cfg(debug_assertions)]
+		println!("Success!");
+	};
+	// Attempt to upgrade the weak pointer, failing gracefully if it has already been dropped.
+	match unsafe { Weak::from_raw(user as *const Mutex<SyncUserData<T>>) }.upgrade() {
+		Some(arc) => {
+			#[cfg(debug_assertions)]
+			println!("Strong: {}; Weak: {}", Arc::strong_count(&arc), Arc::weak_count(&arc));
+			// Handle mutex locking.
+			#[cfg(debug_assertions)]
+			println!("Locking Mutex...");
+			match arc.lock() {
+				Ok(user_box) => f(user_box),
+				Err(e) => f(e.into_inner()),
+			}
+			#[cfg(debug_assertions)]
+			println!("Resetting weak count...");
+			// Reset the weak count.
+			let weak = Arc::downgrade(&arc);
+			// Equivalent to std::mem::forget in a way...
+			let _ = weak.into_raw();
+			#[cfg(debug_assertions)]
+			println!("Hopefully success?");
+		}
+		None => {
+			#[cfg(debug_assertions)]
+			println!("User data freed")
+		}
+	}
+	#[cfg(debug_assertions)]
+	println!("Everything should drop now.");
 }
 
 extern "C" fn dsp_handler<T: Send + Sync>(
@@ -37,11 +68,49 @@ extern "C" fn dsp_handler<T: Send + Sync>(
 	length: DWORD,
 	user: *mut c_void,
 ) {
-	let mut user_box = unsafe { Box::from_raw(user as *mut DspUserData<T>) };
-	let mut data = unsafe { slice::from_raw_parts_mut(buffer as *mut f32, (length.0 / 4) as usize) };
-	(user_box.0)(user_box.1.as_mut(), &mut data, handle, channel); // FIXME!
-	Box::into_raw(user_box);
-	// println!("User Proc should have run!");
+	// let mut user_box = unsafe { Box::from_raw(user as *mut DspUserData<T>) };
+	// let mut data = unsafe { slice::from_raw_parts_mut(buffer as *mut f32, (length.0 / 4) as usize) };
+	// (user_box.0)(user_box.1.as_mut(), &mut data, handle, channel); // FIXME!
+	// Box::into_raw(user_box);
+	let f = |mut user_box: MutexGuard<'_, DspUserData<T>>| {
+		#[cfg(debug_assertions)]
+		println!("deref_mut'ing DspUserData...");
+		let user_box = user_box.deref_mut();
+		#[cfg(debug_assertions)]
+		println!("Running user DspProc...");
+		let mut data = unsafe { slice::from_raw_parts_mut(buffer as *mut f32, (length.0 / 4) as usize) };
+		(user_box.0)(user_box.1.as_mut(), &mut data, handle, channel);
+		#[cfg(debug_assertions)]
+		println!("Success!");
+	};
+	// Attempt to upgrade the weak pointer, failing gracefully if it has already been dropped.
+	match unsafe { Weak::from_raw(user as *const Mutex<DspUserData<T>>) }.upgrade() {
+		Some(arc) => {
+			#[cfg(debug_assertions)]
+			println!("Strong: {}; Weak: {}", Arc::strong_count(&arc), Arc::weak_count(&arc));
+			// Handle mutex locking.
+			#[cfg(debug_assertions)]
+			println!("Locking Mutex...");
+			match arc.lock() {
+				Ok(user_box) => f(user_box),
+				Err(e) => f(e.into_inner()),
+			}
+			#[cfg(debug_assertions)]
+			println!("Resetting weak count...");
+			// Reset the weak count.
+			let weak = Arc::downgrade(&arc);
+			// Equivalent to std::mem::forget in a way...
+			let _ = weak.into_raw();
+			#[cfg(debug_assertions)]
+			println!("Hopefully success?");
+		}
+		None => {
+			#[cfg(debug_assertions)]
+			println!("User data freed")
+		}
+	}
+	#[cfg(debug_assertions)]
+	println!("Everything should drop now.");
 }
 
 pub(crate) mod handle {
@@ -332,12 +401,13 @@ pub trait Channel: handle::HasHandle {
 		proc: impl FnMut(&mut T, &mut [f32], HDSP, DWORD) + 'static,
 	) -> BassResult<BassDsp<T>> {
 		let data = Box::new(user_data);
-		let user = Box::new(DspUserData(Box::new(proc), data));
-		let raw = Box::into_raw(user);
-		let dsp = BASS_ChannelSetDSP(self.handle(), Some(dsp_handler::<T>), raw, priority);
+		let user = Arc::new(Mutex::new(DspUserData(Box::new(proc), data)));
+		// let raw = Box::into_raw(user);
+		let weak = Arc::downgrade(&user);
+		let dsp = BASS_ChannelSetDSP(self.handle(), Some(dsp_handler::<T>), weak.into_raw() as *mut Mutex<DspUserData<T>>, priority);
 		println!("HDSP: {:?}", dsp);
 		if dsp != 0 {
-			Ok(BassDsp { dsp, channel: self.handle(), user: raw })
+			Ok(BassDsp { dsp, channel: self.handle(), user })
 		} else {
 			Err(BassError::get())
 		}
@@ -376,12 +446,18 @@ pub trait Channel: handle::HasHandle {
 	) -> BassResult<BassSync<T>> {
 		// let sync = BASS_ChannelSetSync(self.handle(), sync_type & (!BASS_SYNC_ONETIME), parameter, proc, null_mut() as *mut c_void);
 		let data = Box::new(user_data);
-		let user = Box::new(SyncUserData(Box::new(proc), data));
-		let raw = Box::into_raw(user);
-		let sync = BASS_ChannelSetSync(self.handle(), sync_type, parameter, Some(sync_handler::<T>), raw);
+		let user = Arc::new(Mutex::new(SyncUserData(Box::new(proc), data)));
+		let weak = Arc::downgrade(&user);
+		let sync = BASS_ChannelSetSync(
+			self.handle(),
+			sync_type,
+			parameter,
+			Some(sync_handler::<T>),
+			weak.into_raw() as *mut Mutex<SyncUserData<T>>,
+		);
 		println!("Sync: {:?}", sync);
 		if sync != 0 {
-			Ok(BassSync { sync, channel: self.handle(), user: raw })
+			Ok(BassSync { sync, channel: self.handle(), user })
 		} else {
 			Err(BassError::get())
 		}
@@ -645,14 +721,20 @@ pub trait MixerSource: Channel + mixer::MixableChannel {
 	) -> BassResult<BassSync<T>> {
 		// let sync = BASS_ChannelSetSync(self.handle(), sync_type & (!BASS_SYNC_ONETIME), parameter, proc, null_mut() as *mut c_void);
 		let data = Box::new(user_data);
-		let user = Box::new(SyncUserData(Box::new(proc), data));
-		let raw = Box::into_raw(user);
+		let user = Arc::new(Mutex::new(SyncUserData(Box::new(proc), data)));
+		let weak = Arc::downgrade(&user);
 		let sync = unsafe {
-			BASS_Mixer_ChannelSetSync(self.handle(), sync_type, parameter, Some(sync_handler::<T>), raw as *mut c_void)
+			BASS_Mixer_ChannelSetSync(
+				self.handle(),
+				sync_type,
+				parameter,
+				Some(sync_handler::<T>),
+				weak.into_raw() as *mut c_void,
+			)
 		};
 		println!("Mixer Sync: {:?}", sync);
 		if sync != 0 {
-			Ok(BassSync { sync, channel: self.handle(), user: raw })
+			Ok(BassSync { sync, channel: self.handle(), user })
 		} else {
 			Err(BassError::get())
 		}

@@ -13,7 +13,7 @@ use crate::{
 pub struct Splitter(HSTREAM);
 
 impl Splitter {
-	pub fn create(stream: &Stream, flags: DWORD) -> BassResult<Self> {
+	pub fn create<T: Send + Sync>(stream: &Stream<T>, flags: DWORD) -> BassResult<Self> {
 		let stream = unsafe { BASS_Split_StreamCreate(stream.handle(), flags, null()) };
 		if stream != 0 {
 			Ok(Splitter(stream))
