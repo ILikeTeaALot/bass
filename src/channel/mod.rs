@@ -398,7 +398,7 @@ pub trait Channel: handle::HasHandle {
 		&self,
 		priority: i32,
 		user_data: T,
-		proc: impl FnMut(&mut T, &mut [f32], HDSP, DWORD) + 'static,
+		proc: impl FnMut(&mut T, &mut [f32], HDSP, DWORD) + Send + Sync + 'static,
 	) -> BassResult<BassDsp<T>> {
 		let data = Box::new(user_data);
 		let user = Arc::new(Mutex::new(DspUserData(Box::new(proc), data)));
