@@ -1,4 +1,10 @@
-use std::{os::raw::c_void, ptr::null_mut, slice};
+use std::{
+	ops::DerefMut,
+	os::raw::c_void,
+	ptr::null_mut,
+	slice,
+	sync::{Arc, Mutex, MutexGuard, Weak},
+};
 
 use bass_sys::*;
 use handle::HasHandle;
@@ -47,15 +53,18 @@ pub(crate) mod handle {
 }
 
 pub trait Channel: handle::HasHandle {
+	#[inline]
 	fn raw_handle(&self) -> DWORD {
 		HasHandle::handle(self)
 	}
 
 	/// Equivalent to `self.handle() == channel`.
+	#[inline]
 	fn represents_handle(&self, channel: impl Into<DWORD>) -> bool {
 		self.handle() == channel.into()
 	}
 
+	#[inline]
 	fn bytes_to_seconds(&self, position: impl Into<QWORD>) -> BassResult<f64> {
 		let value = BASS_ChannelBytes2Seconds(self.handle(), position);
 		if value >= 0. {
@@ -65,6 +74,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn flag_remove(&self, flag: DWORD) -> BassResult<DWORD> {
 		let ok = BASS_ChannelFlags(self.handle(), 0, flag);
 		if ok != -1 {
@@ -74,6 +84,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn flag_set(&self, flag: DWORD) -> BassResult<DWORD> {
 		let ok = BASS_ChannelFlags(self.handle(), flag, flag);
 		if ok != -1 {
@@ -85,6 +96,7 @@ pub trait Channel: handle::HasHandle {
 
 	// 3D Attributes TODO
 
+	#[inline]
 	fn get_attribute(&self, attribute: DWORD) -> BassResult<f32> {
 		let mut value: f32 = 0.;
 		let ok = BASS_ChannelGetAttribute(self.handle(), attribute, &mut value);
@@ -97,6 +109,7 @@ pub trait Channel: handle::HasHandle {
 
 	// get_attribute_ex TODO MAYBE
 
+	#[inline]
 	fn get_device(&self) -> BassResult<u32> {
 		let device = BASS_ChannelGetDevice(self.handle()).0;
 		if device as i32 != -1 {
@@ -106,6 +119,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn get_info(&self) -> BassResult<BASS_CHANNELINFO> {
 		let mut info = BASS_CHANNELINFO::default();
 		let ok = BASS_ChannelGetInfo(self.handle(), &mut info); // This should always succeed.
@@ -116,6 +130,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn get_length(&self, mode: DWORD) -> BassResult<u64> {
 		let ok = BASS_ChannelGetLength(self.handle(), mode);
 		if ok.0 as i64 != -1 {
@@ -125,6 +140,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn get_level(&self) -> BassResult<(u16, u16)> {
 		let ok = BASS_ChannelGetLevel(self.handle());
 		if ok.0 as i32 != -1 {
@@ -177,6 +193,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn get_position(&self, mode: DWORD) -> BassResult<u64> {
 		let value = BASS_ChannelGetPosition(self.handle(), mode);
 		if value.0 as i64 != -1 {
@@ -186,14 +203,18 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
+	/// TODO :: Use an enum?
 	fn is_active(&self) -> DWORD {
 		BASS_ChannelIsActive(self.handle())
 	}
 
+	#[inline]
 	fn is_sliding(&self, attrib: DWORD) -> bool {
 		BASS_ChannelIsSliding(self.handle(), attrib)
 	}
 
+	#[inline]
 	fn lock(&self) -> BassResult<()> {
 		let ok = BASS_ChannelLock(self.handle(), true);
 		if ok {
@@ -203,6 +224,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn unlock(&self) -> BassResult<()> {
 		let ok = BASS_ChannelLock(self.handle(), false);
 		if ok {
@@ -212,6 +234,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn pause(&self) -> BassResult<()> {
 		let ok = BASS_ChannelPause(self.handle());
 		if ok {
@@ -221,6 +244,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn play(&self, restart: bool) -> BassResult<()> {
 		let ok = BASS_ChannelPlay(self.handle(), restart);
 		if ok {
@@ -239,6 +263,7 @@ pub trait Channel: handle::HasHandle {
 	// 	}
 	// }
 
+	#[inline]
 	fn remove_fx(&self, fx: &BassFx) -> BassResult<()> {
 		let ok = BASS_ChannelRemoveFX(self.handle(), fx.0);
 		if ok {
@@ -248,6 +273,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn remove_link(&self, channel: impl Into<DWORD>) -> BassResult<()> {
 		let ok = BASS_ChannelRemoveLink(self.handle(), channel);
 		if ok {
@@ -266,6 +292,7 @@ pub trait Channel: handle::HasHandle {
 	// 	}
 	// }
 
+	#[inline]
 	fn seconds_to_bytes(&self, seconds: f64) -> BassResult<u64> {
 		let value = BASS_ChannelSeconds2Bytes(self.handle(), seconds);
 		if value.0 as i64 != -1 {
@@ -277,6 +304,7 @@ pub trait Channel: handle::HasHandle {
 
 	// Set 3D Attributes...
 
+	#[inline]
 	fn set_attribute(&self, attribute: DWORD, value: f32) -> BassResult<()> {
 		let ok = BASS_ChannelSetAttribute(self.handle(), attribute, value);
 		if ok {
@@ -286,6 +314,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn set_device(&self, device: DWORD) -> BassResult<()> {
 		let ok = BASS_ChannelSetDevice(self.handle(), device);
 		if ok {
@@ -314,6 +343,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	/// To use user data, the recommended way is a static Arc/Mutex
 	fn set_link(&self, channel: DWORD) -> BassResult<()> {
 		let ok = BASS_ChannelSetLink(self.handle(), channel);
@@ -324,6 +354,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn set_position(&self, position: impl Into<QWORD>, mode: DWORD) -> BassResult<()> {
 		let ok = BASS_ChannelSetPosition(self.handle(), position, mode);
 		if ok {
@@ -366,6 +397,7 @@ pub trait Channel: handle::HasHandle {
 	// 	}
 	// }
 
+	#[inline]
 	fn slide_attribute(&self, attribute: DWORD, value: f32, milliseconds: u32) -> BassResult<()> {
 		let ok = BASS_ChannelSlideAttribute(self.handle(), attribute, value, milliseconds);
 		if ok {
@@ -375,6 +407,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn start(&self) -> BassResult<()> {
 		let ok = BASS_ChannelStart(self.handle());
 		if ok {
@@ -384,6 +417,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn stop(&self) -> BassResult<()> {
 		let ok = BASS_ChannelStop(self.handle());
 		if ok {
@@ -393,6 +427,7 @@ pub trait Channel: handle::HasHandle {
 		}
 	}
 
+	#[inline]
 	fn update(&self, length: u32) -> BassResult<()> {
 		let ok = BASS_ChannelUpdate(self.handle(), length);
 		if ok {
