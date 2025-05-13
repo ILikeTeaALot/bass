@@ -37,7 +37,7 @@ pub struct Stream<T: Send + Sync>(
 
 #[repr(C)]
 pub struct DownloadProc<T: Send + Sync> {
-	callback: Box<dyn Fn(&[u8], &mut T) + Send + Sync>,
+	callback: Box<dyn FnMut(&[u8], &mut T) + Send + Sync>,
 	user: Box<T>,
 }
 
@@ -183,10 +183,11 @@ impl<T: Send + Sync> Stream<T> {
 		path: impl AsRef<str>,
 		offset: impl Into<DWORD>,
 		flags: DWORD,
-		callback: impl Fn(&[u8], &mut T) + Send + Sync + 'static,
+		callback: impl FnMut(&[u8], &mut T) + Send + Sync + 'static,
 		user: T,
 	) -> BassResult<Self> {
-		let callback = Box::new(callback) as Box<dyn Fn(&[u8], &mut T) + Send + Sync>;
+		// let callback = Box::new(callback) as Box<dyn Fn(&[u8], &mut T) + Send + Sync>;
+		let callback = Box::new(callback);
 		let url: Vec<u16> = path.as_ref().encode_utf16().collect();
 		let url = U16CString::from_vec_truncate(url);
 		let user = Arc::new(Mutex::new(DownloadProc { callback, user: Box::new(user) }));
