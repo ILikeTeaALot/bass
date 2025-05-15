@@ -14,3 +14,7 @@ widestring = "1.1.0"
 cd = ["bass-sys/basscd"]
 loudness = ["bass-sys/bassloud"]
 mixer = ["bass-sys/bassmix"]
+
+executable_path = ["bass-sys/executable_path"]
+loader_path = ["bass-sys/loader_path"]
+rpath = ["bass-sys/rpath"]
